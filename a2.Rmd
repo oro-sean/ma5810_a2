@@ -1,0 +1,43 @@
+---
+title: "a2"
+author: "Sean O'Rourke"
+date: "28/07/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup q1}
+rm(list = ls()) # removes all variables
+if(!is.null(dev.list())) dev.off() # clear plots
+cat("\014") # clear console
+
+# import required packages
+library(caret, warn.conflicts = F, quietly = T)
+library(dplyr)
+library(reshape2)
+
+set.seed(123) # sets seed for repeat ability of randomly generated numbers
+
+file <- 'http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data' # store the path to the source data
+rawData <- read.csv(file, header = FALSE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors
+names(rawData) <- c("id", "diagnosis", "radius_mean",
+                    "texture_mean","perimeter_mean", 
+                  "area_mean", "smoothness_mean",
+                  "compactness_mean", "concavity_mean",
+                  "concave.points_mean", "symmetry_mean", 
+                  "fractal_dimension_mean" )
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
