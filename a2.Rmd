@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, include = FALSE)
 ```
 
 
@@ -20,12 +20,14 @@ library(caret, warn.conflicts = F, quietly = T)
 library(dplyr)
 library(reshape2)
 library(alookr)
+library(ggpubr)
 
 set.seed(123) # sets seed for repeat ability of randomly generated numbers
 
 file <- 'http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data' # store the path to the source data
 rawData <- read.csv(file, header = FALSE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors
 names(rawData) <- c("id", "diagnosis", "radius_mean", "texture_mean","perimeter_mean", "area_mean", "smoothness_mean", "compactness_mean", "concavity_mean", "concave.points_mean", "symmetry_mean",  "fractal_dimension_mean", "radius_se", "texture_se","perimeter_se", "area_se", "smoothness_se", "compactness_se", "concavity_se", "concave.points_se", "symmetry_se", "fractal_dimension_se", "radius_worst", "texture_worst","perimeter_worst", "area_worst", "smoothness_worst", "compactness_worst", "concavity_worst", "concave.points_worst", "symmetry_worst", "fractal_dimension_worst")
+rawData <- within(rawData, rm("id"))
 
 ```
 
@@ -34,9 +36,11 @@ names(rawData) <- c("id", "diagnosis", "radius_mean", "texture_mean","perimeter_
 You can also embed plots, for example:
 
 ```{r clean data}
-
-modelData <- cleanse()
-
+modelData <- treatment_corr(rawData, corr_thres = 0.9)
+mD_norm <- preProcess(modelData[ , -1], method = c("scale", "center"))
+modelData <- predict(mD_norm, modelData[ , -1])
+graphData <- melt(modelData)
+ggqqplot(data = graphData, id.var = "diagnosis") + facet_wrap(~ variable)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
