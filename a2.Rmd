@@ -1,46 +1,137 @@
 ---
-title: "a2"
-author: "Sean O'Rourke"
-date: "28/07/2021"
+title: "MA5810 Introduction to Data Mining - Assignment 2"
+author: "By Sean O'Rourke (13984624)"
+date: "Due 8 August 2021"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, include = FALSE)
 ```
+***
+## Question 1
 
-
-```{r setup q1}
+```{r q1 prep}
 rm(list = ls()) # removes all variables
 if(!is.null(dev.list())) dev.off() # clear plots
 cat("\014") # clear console
 
 # import required packages
-library(caret, warn.conflicts = F, quietly = T)
-library(dplyr)
-library(reshape2)
-library(alookr)
-library(ggpubr)
+library(caret, warn.conflicts = F, quietly = T) # handy ml package, data splitting, training ect ect
+library(dplyr, warn.conflicts = F, quietly = T) # handy for data prep
+library(reshape2, warn.conflicts = F, quietly = T) # handy for melt() - plotting data frames with ggplot
+library(alookr, warn.conflicts = F, quietly = T) # for removing correlated variables
+library(ggplot2, warn.conflicts = F, quietly = T) # plotting
+library(ggpubr, warn.conflicts = F, quietly = T) # added plotting function
+library(DataExplorer, warn.conflicts = F, quietly = T) # quick exploratory vis
+library(corrplot, warn.conflicts = F, quietly = T) # plotting cormatrix
 
 set.seed(123) # sets seed for repeat ability of randomly generated numbers
 
-file <- 'http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data' # store the path to the source data
-rawData <- read.csv(file, header = FALSE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors
-names(rawData) <- c("id", "diagnosis", "radius_mean", "texture_mean","perimeter_mean", "area_mean", "smoothness_mean", "compactness_mean", "concavity_mean", "concave.points_mean", "symmetry_mean",  "fractal_dimension_mean", "radius_se", "texture_se","perimeter_se", "area_se", "smoothness_se", "compactness_se", "concavity_se", "concave.points_se", "symmetry_se", "fractal_dimension_se", "radius_worst", "texture_worst","perimeter_worst", "area_worst", "smoothness_worst", "compactness_worst", "concavity_worst", "concave.points_worst", "symmetry_worst", "fractal_dimension_worst")
-rawData <- within(rawData, rm("id"))
+file <- 'Breast_cancer.csv' # store the path to the source data
+rawData <- read.csv(file, header = TRUE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors
+names(rawData) <- c("id", "diagnosis", "radius", "texture","perimeter", "area", "smoothness", "compactness", "concavity", "concave.points", "symmetry",  "fractal_dimension") # set column names to meaningful titles
+rawData <- within(rawData, rm("id")) # remove variable ID as it is simply a record identification
 
 ```
+The data was imported directly from the UCI Data Repository using read.csv() and the HTML link with strings.as.factors = TRUE so as categorical data becomes a factor. Some very basic data exploration was then undertaken to ensure the data was imported properly. The outputs are in Appendix 1.
 
-## Including Plots
+```{r q1 initial vis}
+# stored as variables to display in appendix 1
+a1_1 <- introduce(rawData) # provides introductory summary, good to confirm variable types, missing data ect
+a1_2 <- head(rawData) # handy to have a look at actual data
 
-You can also embed plots, for example:
+```
+The initial data exploration confirms that we have no missing values, the dependent variable "diagnosis" is a factor with 2 levels and the remaining variables are numeric. The data was then prepared for logistic regression with the following 3 steps.
+
+* Removal of any correlated predictor variables ( a threshold of a persons correlation coefficient of 0.8 was used)
+* Standardization of predictor variables so as they contribute to the model evenly
+* Visual inspection of variables for normality using qqplots
+* Visual inspection of variables broken down into diagnosis class to further explore normality and gain an empirical understanding of the prediction power of each variable
+* Correlation heat map to ensure no further action is required to remove correlated variables. 
 
 ```{r clean data}
-modelData <- treatment_corr(rawData, corr_thres = 0.9)
-mD_norm <- preProcess(modelData[ , -1], method = c("scale", "center"))
-modelData <- predict(mD_norm, modelData[ , -1])
-graphData <- melt(modelData)
-ggqqplot(data = graphData, id.var = "diagnosis") + facet_wrap(~ variable)
+modelData <- treatment_corr(rawData, corr_thres = 0.8) # remove correlated variables
+mD_norm <- preProcess(modelData[ ,-1], method = c("scale", "center")) # set parameters for scaling data
+modelData <- predict(mD_norm, modelData) # scale data
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The following variables where removed removed due to having a correlation coefficient greater than 0.9
+
+```{r print corelated variables, include = TRUE}
+(names(rawData)[! names(rawData) %in% names(modelData)]) # print columns that where dropped in above steps
+
+```
+
+```{r qqplots, include = TRUE, out.width="50%", out.extra='style="float:left; padding:10px"' }
+ggqqplot(data = melt(modelData)[ ,-1], x = "value", combine = FALSE, size = .5 , facet.by = "variable", ggtheme = theme_pubclean(), title = "QQ Plot for each predictor variable")
+
+```
+
+```{r dist_plots, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
+ggplot(data = melt(modelData, id.var = "diagnosis" ), mapping = aes(x = value, fill = diagnosis)) + geom_density(alpha = 0.5) + facet_wrap(~variable, scales = "free") + ggtitle("Density distribution by diagnosis for all predictors")
+
+```
+
+
+```{r cor plot, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
+corMatrix <- round(cor(modelData[ ,-1]), 2)
+corrplot(corMatrix, method = "square", order = "hclust")
+
+```
+The above plots show that the data is suitable to move into logistic regression the key traits noted are
+
+* A majority of predictors are approximately normally distributed (with the exception of a few out liers),
+* A reasonable number of predictor variables have a strong distinguishing signal between benign and malignant,
+* No strong levels of correlation are noted between predictor variables.
+
+The data was then split into a single test training split and the logistic regression model was fitted using the training data and tested using the test data. The appropriate functions from the package caret were used to complete this task with the following key parameters selected
+
+* 80% / 20% training test split, with stratified sampling across the diagnosis variable,
+* The model "glm" from base r was selected,
+* No training matrix was defined as the model has no hyper parameters to tune as can be seen in the below output,
+* 10 fol cross validation was used so as any sensitivity to test / training splits could be assessed.
+
+```{r tuneparams, include = TRUE}
+modelLookup("glm")
+
+```
+```{r make model}
+# Create test / training split and fit model
+
+train_index <- createDataPartition(modelData$diagnosis, p=0.8, list = FALSE) # returns numerical vector of the index of the observations to be included in the training set
+predictors <- names(modelData[ ,-1]) # vector of predictor names
+testData <- modelData[-train_index, ] # create data.frame of test data
+trainingPredictors <- modelData[train_index, predictors] # create data frame of training predictors
+trainingResponse <- modelData[train_index, 1] # create vector of training responses
+
+trControl <- trainControl(method = "cv", number = 10)
+
+## fit logistic regression model using caret.
+
+bc_logistic_train <- train(x = trainingPredictors, y = trainingResponse, method = "glm", trControl = trControl, family = "binomial")
+bc_logistic_mod <- bc_logistic_train$finalModel
+
+## return some information for assessing the model
+
+prob <- predict(bc_logistic_mod, type = "response") # calculate probabilities of each case in the training data being "M"
+prob <- ifelse(prob > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
+confMatrix_train = confusionMatrix(as.factor(prob), trainingResponse) # create confusion matrix summarizing accuracy on training data
+
+rm(prob) # remove probabilities
+
+prob <- predict(bc_logistic_mod, newdata = testData, type = "response") # calculate probabilities of each case in the test data being "M"
+prob <- ifelse(prob > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
+confMatrix_test = confusionMatrix(as.factor(prob), testData$diagnosis) # create confusion matrix summarizing accuracy on training data 
+
+```
+
+***
+## Apendix 1
+
+
+```{r Apendix 1, include = TRUE}
+(a1_1)
+(a1_2)
+str(rawData)
