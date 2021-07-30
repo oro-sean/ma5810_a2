@@ -2,31 +2,37 @@
 title: "MA5810 Introduction to Data Mining - Assignment 2"
 author: "By Sean O'Rourke (13984624)"
 date: "Due 8 August 2021"
-output: html_document
+output:
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, include = FALSE)
 ```
 ***
+
 ## Question 1
 
 ```{r q1 prep}
+##################
+### Question 1 ###
+##################
+
+## Clear environment
 rm(list = ls()) # removes all variables
 if(!is.null(dev.list())) dev.off() # clear plots
 cat("\014") # clear console
 
-# import required packages
-library(caret, warn.conflicts = F, quietly = T) # handy ml package, data splitting, training ect ect
-library(dplyr, warn.conflicts = F, quietly = T) # handy for data prep
-library(reshape2, warn.conflicts = F, quietly = T) # handy for melt() - plotting data frames with ggplot
-library(alookr, warn.conflicts = F, quietly = T) # for removing correlated variables
-library(ggplot2, warn.conflicts = F, quietly = T) # plotting
-library(ggpubr, warn.conflicts = F, quietly = T) # added plotting function
-library(DataExplorer, warn.conflicts = F, quietly = T) # quick exploratory vis
-library(corrplot, warn.conflicts = F, quietly = T) # plotting cormatrix
+## Import required packages
+library(caret, warn.conflicts = FALSE, quietly = TRUE) # handy ml package, data splitting, training ect ect
+library(tidyverse, warn.conflicts = FALSE, quietly = TRUE) # handy for data prep
+library(reshape2, warn.conflicts = FALSE, quietly = TRUE) # handy for melt() - plotting data frames with ggplot
+library(alookr, warn.conflicts = FALSE, quietly = TRUE) # for removing correlated variables
+library(ggplot2, warn.conflicts = FALSE, quietly = TRUE) # plotting
+library(ggpubr, warn.conflicts = FALSE, quietly = TRUE) # added plotting function
+library(DataExplorer, warn.conflicts = FALSE, quietly = TRUE) # quick exploratory vis
+library(corrplot, warn.conflicts = FALSE, quietly = TRUE) # plotting corrmatrix
 
-set.seed(123) # sets seed for repeat ability of randomly generated numbers
 
 file <- 'Breast_cancer.csv' # store the path to the source data
 rawData <- read.csv(file, header = TRUE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors
@@ -34,104 +40,132 @@ names(rawData) <- c("id", "diagnosis", "radius", "texture","perimeter", "area", 
 rawData <- within(rawData, rm("id")) # remove variable ID as it is simply a record identification
 
 ```
-The data was imported directly from the UCI Data Repository using read.csv() and the HTML link with strings.as.factors = TRUE so as categorical data becomes a factor. Some very basic data exploration was then undertaken to ensure the data was imported properly. The outputs are in Appendix 1.
+The data was imported directly from the UCI Data Repository using read.csv() and the HTML link with strings.as.factors = TRUE so as categorical data becomes a factor. Some very basic data exploration was then undertaken to ensure the data was imported properly. The outputs are shown in Appendix 1, Figures 1 to 3.
 
 ```{r q1 initial vis}
-# stored as variables to display in appendix 1
-a1_1 <- introduce(rawData) # provides introductory summary, good to confirm variable types, missing data ect
-a1_2 <- head(rawData) # handy to have a look at actual data
-
+## initial exploratory vis, stored as variables to display in appendix 1
+a1_1_intro <- introduce(rawData) # provides introductory summary, good to confirm variable types, missing data ect
+a1_2_head <- head(rawData) # handy to have a look at actual data
+a1_3_dataForAppendix <- rawData
 ```
 The initial data exploration confirms that we have no missing values, the dependent variable "diagnosis" is a factor with 2 levels and the remaining variables are numeric. The data was then prepared for logistic regression with the following 3 steps.
 
-* Removal of any correlated predictor variables ( a threshold of a persons correlation coefficient of 0.8 was used)
-* Standardization of predictor variables so as they contribute to the model evenly
-* Visual inspection of variables for normality using qqplots
-* Visual inspection of variables broken down into diagnosis class to further explore normality and gain an empirical understanding of the prediction power of each variable
-* Correlation heat map to ensure no further action is required to remove correlated variables. 
+* Standardization of predictor variables so as they contribute to the model evenly (conformation of the output is shown in Appendix 1, Figure 4),
+* Removal of any correlated predictor variables,
+* Visual inspection of the relationship between predictors and the log odds of the outcome,
+* Visual inspection of variables broken down into diagnosis class to explore normality and gain an empirical understanding of the prediction power of each variable,
+* Visual inspection for any observations which may be overly influential in the model by plotting cooks distance for each observation.
 
-```{r clean data}
-modelData <- treatment_corr(rawData, corr_thres = 0.8) # remove correlated variables
-mD_norm <- preProcess(modelData[ ,-1], method = c("scale", "center")) # set parameters for scaling data
-modelData <- predict(mD_norm, modelData) # scale data
-
-```
-
-The following variables where removed removed due to having a correlation coefficient greater than 0.9
-
-```{r print corelated variables, include = TRUE}
-(names(rawData)[! names(rawData) %in% names(modelData)]) # print columns that where dropped in above steps
+```{r standardise data}
+## standardize data so as it has mean 0 and variance 1
+rD_stz <- preProcess(rawData[ ,-1], method = c("scale", "center")) # set parameters for scaling data
+rawData_stz <- predict(rD_stz, rawData) # scale data
+a1_4_sum_after_stz <- summary(rawData_stz) # save summary to display in appendix
 
 ```
 
-```{r qqplots, include = TRUE, out.width="50%", out.extra='style="float:left; padding:10px"' }
-ggqqplot(data = melt(modelData)[ ,-1], x = "value", combine = FALSE, size = .5 , facet.by = "variable", ggtheme = theme_pubclean(), title = "QQ Plot for each predictor variable")
+```{r correlation, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
+## plot correlation matrix to inspect for correlated variables
+corMatrix <- round(cor(rawData_stz[ ,-1], method = "pearson"), 2) # calculate correlation matrix, using pearson
+corrplot.mixed(corMatrix, order = "AOE") # plot correlation matrix
 
 ```
+Arbitrarily a correlation coefficient of between 0.8 and 0.9 is often used as a threshold. From inspecting the above figure it can be seen the following variables will need to be reviewed:
 
+* Radius
+* Area
+* Perimeter
+* Compactness
+* Concavity
+* Concave points
+
+Little domain knowledge is required to understand that area, perimeter and radius should be closely related and thus retaining only one is a prudent step to take. Without a good understanding of the domain, full confidence in how to deal with Compactness, Concavity and Concave Points is a more difficult. To asses which correlated variables should be kept the variables will be inspected for their suitability to wrt the assumption of a linear response to the log odds of the response variable and their distribution frequencies. 
+
+```{r log odds and linerarity}
+## rough and ready glm and calculation of log odds for plots and predictor assessment
+logistic_initial <- glm(diagnosis ~ . , data = rawData_stz, family = binomial(link = "logit")) # fit a glm model, binomial as we have only 2 responses classes, using the logit link function
+probs_initial <- predict(logistic_initial, type = "response") # use model to calculate the probabilities of the positive outcome 
+predictors <- names(rawData_stz[ ,-1]) # names of predictor variables
+odds <- rawData_stz %>% mutate(logit = log(probs_initial / (1 - probs_initial))) # create new column with the log odds for each case
+odds <- melt(odds[ ,-1], id.vars = "logit") # melt data for plotting
+
+```
+```{r linear plots, include = TRUE, out.width="50%", out.extra='style="float:left; padding:10px"' }
+## Plot predictors vs log odds to check linearity assumption
+ggplot(odds, aes(logit, value)) + geom_point(size = 0.5, alpha = 0.5) + facet_wrap(~variable) + geom_smooth(formula = y ~ x, method = "loess") + ggtitle("Predictor Variables vs Log Odds of Response Variable") # create a grid of plots with log odds on x axis and the value on the y
+
+```
 ```{r dist_plots, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
-ggplot(data = melt(modelData, id.var = "diagnosis" ), mapping = aes(x = value, fill = diagnosis)) + geom_density(alpha = 0.5) + facet_wrap(~variable, scales = "free") + ggtitle("Density distribution by diagnosis for all predictors")
+## frequency distributions to understand distribution of predictors by response class
+ggplot(data = melt(rawData_stz, id.var = "diagnosis" ), mapping = aes(x = value, fill = diagnosis)) + geom_density(alpha = 0.5) + facet_wrap(~variable, scales = "free") + ggtitle("Density distribution by diagnosis for all predictors")
 
 ```
-
-
-```{r cor plot, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
-corMatrix <- round(cor(modelData[ ,-1]), 2)
-corrplot(corMatrix, method = "square", order = "hclust")
-
+  
+```{r drop corelated variables}
+## Replot correlation matrix to ensure suitab;e, save to display in appendix 1
+rawData_drop <- within(rawData_stz, rm("perimeter", "area", "compactness", "concave.points")) # drop correlated variables
+corMatrix <- round(cor(rawData_drop[ ,-1]), 2) # create correlation matrix
+a1_5_cor <- corrplot.mixed(corMatrix, order = "AOE") # plot correlation to check, save for display later
 ```
-The above plots show that the data is suitable to move into logistic regression the key traits noted are
+Perimeter and Area are both function of radius, therefore it follows, and can be seen that the errors they exhibit are the same simply scaled. Interestingly a more pronounced parabolic deviation from linearity could be expected for area (since it should be defined by radius^2). So as any no linearity or other error is not scaled the radius variable will be selected and perimeter and area excluded. The other variables which were found to be heavily correlated were Compactness, Concavity and Concave Points. All 3 were heavily correlated so only one can reasonably be retained. Concavity clearly has the most linear response to the log odds so it will be retained. While not an explicit assumption of the logistic model, Concavity has the most normal distribution and a clear separation between response classes as shown in the density distributions. Texture, Smoothness, Symmetry and Fractal Dimension also exhibit varying degrees of non linearity however without good cause to exclude these variables they will be retained. After the 3 discussed variables were dropped correlation was again plotted. The results are shown in Appendix 1, Figure 5. The highest correlation coefficient of the retained variables is 0.68, which is generally considered acceptable.\
+```{r influence}
+## rough and ready glm for predictor assessment
+logistic_influence <- glm(diagnosis ~ . , data = rawData_drop, family = binomial(link = "logit")) # fit a glm model, binomial as we have only 2 responses classes, using the logit link function
+```
 
-* A majority of predictors are approximately normally distributed (with the exception of a few out liers),
-* A reasonable number of predictor variables have a strong distinguishing signal between benign and malignant,
-* No strong levels of correlation are noted between predictor variables.
-
-The data was then split into a single test training split and the logistic regression model was fitted using the training data and tested using the test data. The appropriate functions from the package caret were used to complete this task with the following key parameters selected
+```{r cooks plot, include = TRUE, out.width="65%", out.extra='style="float:right; padding:10px"' }
+## plot cooks's distance
+plot(logistic_influence, which = 4, id.n = 5) # plot cooks distance
+```
+The final step in assessment of the data for suitability is to check that no single observation is overly influential and thus could be considered an outlier.This assessment is made by calculating Cook's Distance, which
+asses the effect of deleting any given observation. The logistic model will be fitted to the retained predictors and Cook's distance plotted for assessment. The plot shows that while some observations are reletevly strong, they do not exhibit a large Cooks's number in absolute terms. Without domain knowledge on how to address any outliers detected further investigation is not warranted.\
+\
+\
+\
+\
+It is now clear that the data is suitably close to meeting the assumptions of Logistic regression and a model can be fitted and assessed on training and test data sets. As such, the data was then split into a single test training split and the logistic regression model was fitted. The createDataPartition() from caret was used to create a stratified sample along the response variable. The glm() from base r was then used to fit the logistic regresion model. The following key parameters were used. As there are no hyperparameters to tune there was no need for cross validation within the training data. 
 
 * 80% / 20% training test split, with stratified sampling across the diagnosis variable,
-* The model "glm" from base r was selected,
-* No training matrix was defined as the model has no hyper parameters to tune as can be seen in the below output,
-* 10 fol cross validation was used so as any sensitivity to test / training splits could be assessed.
+* A "binomial" function was selected as the response has only 2 levels,
+* the "logit" function was selected as the link function.
 
-```{r tuneparams, include = TRUE}
-modelLookup("glm")
+```{r housekeeping}
+# house keeping
+modelData <- rawData_drop # move data into modelData data frame
+rm(corMatrix, odds, rD_stz, file, predictors, probs_initial, rawData, rawData_drop, rawData_stz, logistic_influence, logistic_initial) # remove variables that are not required.
 
 ```
-```{r make model}
-# Create test / training split and fit model
 
+```{r final model}
+### Prepare and fit final model
+## Create test / training split
 train_index <- createDataPartition(modelData$diagnosis, p=0.8, list = FALSE) # returns numerical vector of the index of the observations to be included in the training set
-predictors <- names(modelData[ ,-1]) # vector of predictor names
 testData <- modelData[-train_index, ] # create data.frame of test data
-trainingPredictors <- modelData[train_index, predictors] # create data frame of training predictors
-trainingResponse <- modelData[train_index, 1] # create vector of training responses
+trainingData <- modelData[train_index, ] # create data frame of training predictors
 
-trControl <- trainControl(method = "cv", number = 10)
-
-## fit logistic regression model using caret.
-
-bc_logistic_train <- train(x = trainingPredictors, y = trainingResponse, method = "glm", trControl = trControl, family = "binomial")
-bc_logistic_mod <- bc_logistic_train$finalModel
+## fit logistic regression model
+bc_logistic <- glm(diagnosis ~ . , data = trainingData, family = binomial(link = "logit")) # fit logistic regresion model
 
 ## return some information for assessing the model
+prob_train <- predict(bc_logistic, type = "response") # calculate probabilities of each case in the training data being "M"
+prob_train <- ifelse(prob_train > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
+confMatrix_train = confusionMatrix(as.factor(prob_train), trainingData$diagnosis) # create confusion matrix summarizing accuracy on training data
 
-prob <- predict(bc_logistic_mod, type = "response") # calculate probabilities of each case in the training data being "M"
-prob <- ifelse(prob > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
-confMatrix_train = confusionMatrix(as.factor(prob), trainingResponse) # create confusion matrix summarizing accuracy on training data
-
-rm(prob) # remove probabilities
-
-prob <- predict(bc_logistic_mod, newdata = testData, type = "response") # calculate probabilities of each case in the test data being "M"
-prob <- ifelse(prob > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
-confMatrix_test = confusionMatrix(as.factor(prob), testData$diagnosis) # create confusion matrix summarizing accuracy on training data 
+prob_test <- predict(bc_logistic, newdata = testData, type = "response") # calculate probabilities of each case in the test data being "M"
+prob_test <- ifelse(prob_test > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
+confMatrix_test = confusionMatrix(as.factor(prob_test), testData$diagnosis) # create confusion matrix summarizing accuracy on training data 
 
 ```
-
 ***
 ## Apendix 1
 
 
 ```{r Apendix 1, include = TRUE}
-(a1_1)
-(a1_2)
-str(rawData)
+(a1_1_intro)
+(a1_2_head)
+str(a1_3_dataForAppendix)
+(a1_4_sum_after_stz)
+(a1_5_cor)
+```
+
+
