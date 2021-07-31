@@ -32,6 +32,8 @@ library(ggplot2, warn.conflicts = FALSE, quietly = TRUE) # plotting
 library(ggpubr, warn.conflicts = FALSE, quietly = TRUE) # added plotting function
 library(DataExplorer, warn.conflicts = FALSE, quietly = TRUE) # quick exploratory vis
 library(corrplot, warn.conflicts = FALSE, quietly = TRUE) # plotting corrmatrix
+library(ROCR, warn.conflicts = FALSE, quietly = TRUE) # for ROC curves
+library(ROCit, warn.conflicts = FALSE, quietly = TRUE) # for ROC curves
 
 
 file <- 'Breast_cancer.csv' # store the path to the source data
@@ -104,8 +106,7 @@ ggplot(data = melt(rawData_stz, id.var = "diagnosis" ), mapping = aes(x = value,
 ```{r drop corelated variables}
 ## Replot correlation matrix to ensure suitab;e, save to display in appendix 1
 rawData_drop <- within(rawData_stz, rm("perimeter", "area", "compactness", "concave.points")) # drop correlated variables
-corMatrix <- round(cor(rawData_drop[ ,-1]), 2) # create correlation matrix
-a1_5_cor <- corrplot.mixed(corMatrix, order = "AOE") # plot correlation to check, save for display later
+a1_5_cor <- round(cor(rawData_drop[ ,-1]), 2) # create correlation matrix
 ```
 Perimeter and Area are both function of radius, therefore it follows, and can be seen that the errors they exhibit are the same simply scaled. Interestingly a more pronounced parabolic deviation from linearity could be expected for area (since it should be defined by radius^2). So as any no linearity or other error is not scaled the radius variable will be selected and perimeter and area excluded. The other variables which were found to be heavily correlated were Compactness, Concavity and Concave Points. All 3 were heavily correlated so only one can reasonably be retained. Concavity clearly has the most linear response to the log odds so it will be retained. While not an explicit assumption of the logistic model, Concavity has the most normal distribution and a clear separation between response classes as shown in the density distributions. Texture, Smoothness, Symmetry and Fractal Dimension also exhibit varying degrees of non linearity however without good cause to exclude these variables they will be retained. After the 3 discussed variables were dropped correlation was again plotted. The results are shown in Appendix 1, Figure 5. The highest correlation coefficient of the retained variables is 0.68, which is generally considered acceptable.\
 ```{r influence}
@@ -119,11 +120,7 @@ plot(logistic_influence, which = 4, id.n = 5) # plot cooks distance
 ```
 The final step in assessment of the data for suitability is to check that no single observation is overly influential and thus could be considered an outlier.This assessment is made by calculating Cook's Distance, which
 asses the effect of deleting any given observation. The logistic model will be fitted to the retained predictors and Cook's distance plotted for assessment. The plot shows that while some observations are reletevly strong, they do not exhibit a large Cooks's number in absolute terms. Without domain knowledge on how to address any outliers detected further investigation is not warranted.\
-\
-\
-\
-\
-It is now clear that the data is suitably close to meeting the assumptions of Logistic regression and a model can be fitted and assessed on training and test data sets. As such, the data was then split into a single test training split and the logistic regression model was fitted. The createDataPartition() from caret was used to create a stratified sample along the response variable. The glm() from base r was then used to fit the logistic regresion model. The following key parameters were used. As there are no hyperparameters to tune there was no need for cross validation within the training data. 
+It is now clear that the data is suitably close to meeting the assumptions of Logistic regression and a model can be fitted and assessed on training and test data sets. As such, the data was then split into a single test training split and the logistic regression model was fitted. The createDataPartition() from caret was used to create a stratified sample along the response variable. The glm() from base r was then used to fit the logistic regression model. The following key parameters were used. As there are no hyperparameters to tune there was no need for cross validation within the training data. 
 
 * 80% / 20% training test split, with stratified sampling across the diagnosis variable,
 * A "binomial" function was selected as the response has only 2 levels,
@@ -149,23 +146,118 @@ bc_logistic <- glm(diagnosis ~ . , data = trainingData, family = binomial(link =
 ## return some information for assessing the model
 prob_train <- predict(bc_logistic, type = "response") # calculate probabilities of each case in the training data being "M"
 prob_train <- ifelse(prob_train > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
-confMatrix_train = confusionMatrix(as.factor(prob_train), trainingData$diagnosis) # create confusion matrix summarizing accuracy on training data
-
-prob_test <- predict(bc_logistic, newdata = testData, type = "response") # calculate probabilities of each case in the test data being "M"
-prob_test <- ifelse(prob_test > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
-confMatrix_test = confusionMatrix(as.factor(prob_test), testData$diagnosis) # create confusion matrix summarizing accuracy on training data 
+confMatrix_train <- confusionMatrix(as.factor(prob_train), trainingData$diagnosis) # create confusion matrix summarizing accuracy on training data
 
 ```
+
+```{r model assesment}
+## crsave assesment values for displaying in appendix
+ROCpred <- prediction(predict(bc_logistic, type = "response"), trainingData$diagnosis)
+a1_6_roc <- performance(ROCpred, "tpr", "fpr") # save values for roc curve
+a1_7_1_dev <- bc_logistic$deviance # save deviance
+a1_7_2_nullDev <- bc_logistic$null.deviance # save null deviance
+a1_7_3_aic <- bc_logistic$aic # save aic 
+a1_8 <- confMatrix_train # save confusion matrix
+
+```
+Now that the model has been fitted we can assess how well the model fits the data and determine how to best use the model to make predictions. Firstly to asses how well the model fits the training data we will consider the following 3 indicators:
+
+* Empirical review of the ROC curve,
+* Residual deviance and AIC,
+* The performance of the model at making predictions with a threshold of 0.5.
+
+The output from the above 3 items is attached In appendix 1 figures 6 to 8 respectively. It can be seen that there is a significant reduction in the deviance from a null score of ~600 to a fitted score of ~120. Further the AIC score of 140 is reasonable. The model can also be seen to perform well from a visual assessment of the ROC curve showing the model differs significantly from a simple chance machine that would return a straight line from 0,0 to 1,1. Finally the confusion matrix shows the model has a meaningful ability to predict that the case is malignant or benign. Importantly it should be noted that the "b" or benign class is considered positive. While in many situations overall model accuracy may be considered the best measure of model accuracy, in this situation, considering diagnosed cancer is significantly worse than investigating a benign growth further the model will be adjusted to better capture this. As the model is framed with the benign case as the positive class the rate of "true positives" needs to be maximized, ie minimise the number of false positives (malignant cases classified as benign). This is also known as maximizing the sensitivity of the model. Referring back to the ROC curve in Appendix 1 it can be seen that the rate of false positives fall considerably, with a reasonable drop in true positives unto a probability threshold of 0.8. to further explore this the adjacent figure shows the specificity of the model vs the cut off probability threshold.
+
+```{r threshold assesment, include = TRUE, out.width="75%", out.extra='style="float:right; padding:10px"'}
+## Create plot of positive predictive power
+PPV <- measureit(score = bc_logistic$fitted.values, class = bc_logistic$y, measure = c("PPV")) # creates object summarizing the PPV of the model for different cutoffs
+PPV_plotDF <- data.frame(PPV$Cutoff, PPV$PPV) # convert to df for ggplot
+names(PPV_plotDF) <- c("Probability Threshold", "Positive Predictive Power") # name data frame columns
+ppv_plot <- ggplot(na.omit(PPV_plotDF), aes(`Probability Threshold`, `Positive Predictive Power`)) + geom_line(size = 1, colour = "red") + geom_hline(aes(yintercept=0.995), colour = "blue")+ geom_text(aes( 0, 0.995, label = 0.995, vjust = -1), size = 3, colour = "blue") + geom_vline(aes(xintercept=0.8), colour = "blue")+ geom_text(aes( .8, 0, label = 0.8, hjust = -1), size = 3, colour = "blue") + theme_light() + ggtitle("Positive Predictive power Vs Probability Threshold") # define plot
+ppv_plot
+```
+Now that the model has been refined to suit the domain we will asses it performance on the test data set using a probability thresholds of 0.8 and 0.5 to investigate the consequence of our decision to adopt 0.8. The probability thresholds simply refer to the likelihood that the observation will be benign (or more generally belong to the positive class of the model). The confusion matrix tables for probability 0.5 and probability 0.8 are shown in appendix 1 figures 9 and 10. These tables show that with a probability of 0.8 no cases are identified as benign that are malignant, where as if 0.5 was used 2 cases would have been miss classified. The trade off for this accuracy is that one case was miss classified as malignant when it was actually benign. The bellow stats confirm this with a sensitivity of 1 (100%) for the 0.8 probability and a reduction of 0.02 or 2% in specificity.
+```{r test data assesment p  0.8, include = TRUE}
+prob_test <- predict(bc_logistic, newdata = testData, type = "response") # calculate probabilities of each case in the test data being "M"
+prob_test_5 <- ifelse(prob_test > 0.5, "M", "B") # convert probability into classification assuming .5 descion boundary
+prob_test_8 <- ifelse(prob_test > 0.8, "M", "B") # convert probability into classification assuming .5 descion boundary
+confMatrix_test_5 <- confusionMatrix(as.factor(prob_test_5), testData$diagnosis) # create confusion matrix summarizing accuracy on training data
+confMatrix_test_8 <- confusionMatrix(as.factor(prob_test_8), testData$diagnosis) # create confusion matrix summarizing accuracy on training data
+a1_9_cor5 <- confMatrix_test_5$table # save confusion matrix table for appendix
+a1_10_cor8 <- confMatrix_test_8$table # save confusion matrix for appendix
+confMatrix_test_5$byClass # return accuracy by class
+confMatrix_test_8$byClass # return accuracy by class
+```
+The logistic regression model can also be used to assess the importance of each predictor, or how much each predictor contributes to the model. This is stated as a p-value and the null hypothesis is framed that the variable is not significant to the model. Thus predictors which have small p-values, or a low chance of the null hypothesis being true are considered significant. As in many statistical applications, without further investigation, a p- value < 0.05 or a 95% chance the null hypothesis is false is the usual boundary for a variable to be considered significant. The p values of the predictors is shown in the below output. It can be seen that the variables Radius, Texture, Smoothness, Concavity are all extremely significant to the model. The variable Fractal Dimension is some what significant and Symmetry is not significant. It is reasonable to assume that these levels of significance reflect how important each predictor is in identifying the odds of having cancer. When reviewing this with the frequency distributions plotted in the exploratory analysis it is consistent that the predictors with minimal overlap between classes are more powerful predictors.
+
+```{r p-values, include = TRUE}
+## output p values 
+summary(bc_logistic) # p values
+
+```
+While only radius was included in the model, as radius and area were so heavily correlated (0.99), it is reasonable to assume that they would both have a similar effect. This is a good assumption as variables with such high levels of correlation can be considered to be essentially the same variable. This is supported by the fact that both variables presented nearly identically in the exploratory visualization, of particular importance in the distribution frequencies. 
+
 ***
 ## Apendix 1
 
+### Figure 1
+```{r Apendix 1_1, include = TRUE}
+a1_1_intro
 
-```{r Apendix 1, include = TRUE}
-(a1_1_intro)
-(a1_2_head)
-str(a1_3_dataForAppendix)
-(a1_4_sum_after_stz)
-(a1_5_cor)
 ```
+
+### Figure 2
+```{r Apendix 1_2, include = TRUE}
+a1_2_head
+
+```
+
+### Figure 3
+```{r Apendix 1_3, include = TRUE}
+str(a1_3_dataForAppendix)
+
+```
+
+### Figure 4
+```{r Apendix 1_4, include = TRUE}
+a1_4_sum_after_stz
+
+```
+
+### Figure 5
+```{r Apendix 1_5, include = TRUE}
+corrplot.mixed(a1_5_cor, order = "AOE")
+
+```
+
+### Figure 6
+```{r Apendix 1_6, include = TRUE}
+plot(a1_6_roc, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.2), text.adj=c(-0.2,1.7)) + title(main = "ROC Curve")
+
+```
+
+### Figure 7
+```{r Apendix 1_7, include = TRUE}
+a1_7_1_dev
+```
+
+### Figure 8
+```{r Apendix 1_8, include = TRUE}
+a1_8
+
+```
+
+### Figure 9
+```{r Apendix 1_9, include = TRUE}
+a1_9_cor5
+
+```
+
+### Figure 10
+```{r Apendix 1_10, include = TRUE}
+a1_10_cor8
+
+```
+
 
 
