@@ -37,7 +37,7 @@ library(ROCit, warn.conflicts = FALSE, quietly = TRUE) # for ROC curves
 
 
 file <- 'Breast_cancer.csv' # store the path to the source data
-rawData <- read.csv(file, header = TRUE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors
+rawData <- read.csv(file, header = TRUE, stringsAsFactors = TRUE) # import source data, in this case the data file has headers and strings will be used a factors
 names(rawData) <- c("id", "diagnosis", "radius", "texture","perimeter", "area", "smoothness", "compactness", "concavity", "concave.points", "symmetry",  "fractal_dimension") # set column names to meaningful titles
 rawData <- within(rawData, rm("id")) # remove variable ID as it is simply a record identification
 
@@ -198,7 +198,14 @@ summary(bc_logistic) # p values
 While only radius was included in the model, as radius and area were so heavily correlated (0.99), it is reasonable to assume that they would both have a similar effect. This is a good assumption as variables with such high levels of correlation can be considered to be essentially the same variable. This is supported by the fact that both variables presented nearly identically in the exploratory visualization, of particular importance in the distribution frequencies. 
 
 ***
-## Apendix 1
+
+
+
+
+
+
+***
+## Appendix 1
 
 ### Figure 1
 ```{r Apendix 1_1, include = TRUE}
@@ -253,7 +260,7 @@ a1_9_cor5
 
 ```
 
-### Figure 10
+### Figure 10•
 ```{r Apendix 1_10, include = TRUE}
 a1_10_cor8
 

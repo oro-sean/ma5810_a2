@@ -1,0 +1,90 @@
+---
+title: "q3"
+author: "Sean O'Rourke"
+date: "01/08/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, include = FALSE)
+```
+***
+## Question 3
+
+```{r Q3 setup}
+##################
+### Question 3 ###
+##################
+
+## Clear environment
+rm(bc_logistic, confMatrix_test_5, confMatrix_test_8, confMatrix_train, modelData, PPV, ppv_plot, PPV_plotDF, prob_test, prob_test_5, prob_test_8, prob_train, ROCpred, testData, train_index, trainingData) # remove variables from last question, except appendix
+if(!is.null(dev.list())) dev.off() # clear plots
+cat("\014") # clear console
+
+## Import required packages
+library(caret, warn.conflicts = FALSE, quietly = TRUE) # handy ml package, data splitting, training ect ect
+library(cluster, warn.conflicts = FALSE, quietly = TRUE) # for clustering
+library(tidyverse, warn.conflicts = FALSE, quietly = TRUE) # handy for data prep
+library(ggplot2, warn.conflicts = FALSE, quietly = TRUE) # plotting
+library(ggpubr, warn.conflicts = FALSE, quietly = TRUE) # added plotting function
+library(DataExplorer, warn.conflicts = FALSE, quietly = TRUE) # quick exploratory vis
+library(corrplot, warn.conflicts = FALSE, quietly = TRUE) # plotting corrmatrix
+library(alookr, warn.conflicts = F, quietly = T) # for removing correlated variables
+
+file <- 'leukemia_dat.csv' # store the path to the source data
+rawData <- read.csv(file, header = TRUE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors 
+rawData <- within(rawData, rm("X", "patient_id")) # remove variable ID as it is simply a record identification
+
+```
+The first step in this investigation was to select a clustering technique. While there are many computational methods to compare and asses algorithims an emperical approach that factors in the qualities of the data and the purpose of the investigation was required. Firstly it was assumed that the data set had been cleaned and was free from errors and any outliers were genuine cases that needed to be accounted for. The second factor that was considered was the investigations requiremnt to produce an outcome that is understandable and interrigatable. That is,  the purpose of the excercise is to gain an insight into the relatinships between the gene groupings not simply drop observations into the correct bucket. These to requiremnts aleviated the need and ruled out the use of density based clustering methods. The remaining methods were partinonal clustering and hierarchical clustering. While k-means has been shown to work well on this data set https://reader.elsevier.com/reader/sd/pii/S1532046402000011?token=B4E03788C17FFD5046309016B4799F695FE78247ECC29EB16F49A2735E10890FB189F1572B0635EE46D375C1AC37D346&originRegion=us-east-1&originCreation=20210801040444
+
+
+talk to the risks and what we can optimise in heirachial clustering
+
+dfd
+
+
+The data was first loaded into R and the labeling columns X and patient_id removed as there is no need to retain observation identifiers. Some elementary exploration was then undertaken, the outputs can be seen in Appendix 2 figures 1. It can be seen that there are no missing values, all observations are labeled and contain 1867 numeric variables for each entry.
+
+
+
+```{r q3 initial vis}
+## initial exploratory vis, stored as variables to display in appendix 1
+a2_1_intro <- introduce(rawData) # provides introductory summary, good to confirm variable types, missing data ect
+```
+
+```{r standardise data}
+## standardize data so as it has mean 0 and variance 1
+rD_stz <- preProcess(rawData[ ,-1], method = c("scale", "center")) # set parameters for scaling data
+rawData_stz <- predict(rD_stz, rawData) # scale data
+a1_4_sum_after_stz <- summary(rawData_stz) # save summary to display in appendix
+```
+
+```{r }
+rawData <- treatment_corr(rawData, corr_thres = 0.9)
+test <- agnes(rawData[ ,-1], metric = "euclidean", method = "ward")
+pltree(test, cex = 0.6, hang = 1)
+cluster <- cutree(test, k = 2)
+cluster <- as.factor(ifelse(cluster == 1, "ALL", "AML"))
+confMatrix_train <- confusionMatrix(cluster, rawData$type)
+confMatrix_train
+```
+
+***
+## Appendix 2
+
+
+```{r A2 fig 1}
+## initial exploratory vis, stored as variables to display in appendix 1
+a2_1_intro
+
+```
+
+```{r A2 fig 2}
+## initial exploratory vis, stored as variables to display in appendix 1
+a2_2_head
+
+```
+
+
+```
