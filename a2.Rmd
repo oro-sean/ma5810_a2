@@ -3,6 +3,7 @@ title: "MA5810 Introduction to Data Mining - Assignment 2"
 author: "By Sean O'Rourke (13984624)"
 date: "Due 8 August 2021"
 output:
+  pdf_document: default
   html_document: default
 ---
 
@@ -66,7 +67,7 @@ a1_4_sum_after_stz <- summary(rawData_stz) # save summary to display in appendix
 
 ```
 
-```{r correlation, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
+```{r correlation, include = TRUE, fig.cap= "Plot of correlation matrix of predictor variables", fig.width=6, fig.height=4, fig.align='center'}
 ## plot correlation matrix to inspect for correlated variables
 corMatrix <- round(cor(rawData_stz[ ,-1], method = "pearson"), 2) # calculate correlation matrix, using pearson
 corrplot.mixed(corMatrix, order = "AOE") # plot correlation matrix
@@ -92,12 +93,12 @@ odds <- rawData_stz %>% mutate(logit = log(probs_initial / (1 - probs_initial)))
 odds <- melt(odds[ ,-1], id.vars = "logit") # melt data for plotting
 
 ```
-```{r linear plots, include = TRUE, out.width="50%", out.extra='style="float:left; padding:10px"' }
+```{r linear plots, include = TRUE, fig.cap= "Plots of predictors vs log odds to incpect for assumption of linerarity", fig.width=6, fig.height=4, fig.align='center'}
 ## Plot predictors vs log odds to check linearity assumption
 ggplot(odds, aes(logit, value)) + geom_point(size = 0.5, alpha = 0.5) + facet_wrap(~variable) + geom_smooth(formula = y ~ x, method = "loess") + ggtitle("Predictor Variables vs Log Odds of Response Variable") # create a grid of plots with log odds on x axis and the value on the y
 
 ```
-```{r dist_plots, include = TRUE, out.width="50%", out.extra='style="float:right; padding:10px"'}
+```{r dist_plots, include = TRUE, fig.cap= "Frequency distribution to understand distribution of predictors by response class", fig.width=6, fig.height=4, fig.align='center'}
 ## frequency distributions to understand distribution of predictors by response class
 ggplot(data = melt(rawData_stz, id.var = "diagnosis" ), mapping = aes(x = value, fill = diagnosis)) + geom_density(alpha = 0.5) + facet_wrap(~variable, scales = "free") + ggtitle("Density distribution by diagnosis for all predictors")
 
@@ -114,7 +115,7 @@ Perimeter and Area are both function of radius, therefore it follows, and can be
 logistic_influence <- glm(diagnosis ~ . , data = rawData_drop, family = binomial(link = "logit")) # fit a glm model, binomial as we have only 2 responses classes, using the logit link function
 ```
 
-```{r cooks plot, include = TRUE, out.width="65%", out.extra='style="float:right; padding:10px"' }
+```{r cooks plot, include = TRUE, fig.cap= "Cooks distance to inspect for overly influential observations", fig.width=6, fig.height=4, fig.align='center'}
 ## plot cooks's distance
 plot(logistic_influence, which = 4, id.n = 5) # plot cooks distance
 ```
@@ -168,7 +169,7 @@ Now that the model has been fitted we can assess how well the model fits the dat
 
 The output from the above 3 items is attached In appendix 1 figures 6 to 8 respectively. It can be seen that there is a significant reduction in the deviance from a null score of ~600 to a fitted score of ~120. Further the AIC score of 140 is reasonable. The model can also be seen to perform well from a visual assessment of the ROC curve showing the model differs significantly from a simple chance machine that would return a straight line from 0,0 to 1,1. Finally the confusion matrix shows the model has a meaningful ability to predict that the case is malignant or benign. Importantly it should be noted that the "b" or benign class is considered positive. While in many situations overall model accuracy may be considered the best measure of model accuracy, in this situation, considering diagnosed cancer is significantly worse than investigating a benign growth further the model will be adjusted to better capture this. As the model is framed with the benign case as the positive class the rate of "true positives" needs to be maximized, ie minimise the number of false positives (malignant cases classified as benign). This is also known as maximizing the sensitivity of the model. Referring back to the ROC curve in Appendix 1 it can be seen that the rate of false positives fall considerably, with a reasonable drop in true positives unto a probability threshold of 0.8. to further explore this the adjacent figure shows the specificity of the model vs the cut off probability threshold.
 
-```{r threshold assesment, include = TRUE, out.width="75%", out.extra='style="float:right; padding:10px"'}
+```{r threshold assesment, include = TRUE, fig.cap= "Positive predictive power as a function of probability threshold", fig.width=6, fig.height=4, fig.align='center'}
 ## Create plot of positive predictive power
 PPV <- measureit(score = bc_logistic$fitted.values, class = bc_logistic$y, measure = c("PPV")) # creates object summarizing the PPV of the model for different cutoffs
 PPV_plotDF <- data.frame(PPV$Cutoff, PPV$PPV) # convert to df for ggplot
@@ -197,12 +198,206 @@ summary(bc_logistic) # p values
 ```
 While only radius was included in the model, as radius and area were so heavily correlated (0.99), it is reasonable to assume that they would both have a similar effect. This is a good assumption as variables with such high levels of correlation can be considered to be essentially the same variable. This is supported by the fact that both variables presented nearly identically in the exploratory visualization, of particular importance in the distribution frequencies. 
 
+
 ***
 
+## Question 3
 
+```{r Q3 setup}
+##################
+### Question 3 ###
+##################
 
+## Clear environment
+rm(bc_logistic, confMatrix_test_5, confMatrix_test_8, confMatrix_train, modelData, PPV, ppv_plot, PPV_plotDF, prob_test, prob_test_5, prob_test_8, prob_train, ROCpred, testData, train_index, trainingData) # remove variables from last question, except appendix
+if(!is.null(dev.list())) dev.off() # clear plots
+cat("\014") # clear console
 
+## Import required packages
+library(caret, warn.conflicts = FALSE, quietly = TRUE) # handy ml package, data splitting, training ect ect
+library(cluster, warn.conflicts = FALSE, quietly = TRUE) # for clustering
+library(tidyverse, warn.conflicts = FALSE, quietly = TRUE) # handy for data prep
+library(ggplot2, warn.conflicts = FALSE, quietly = TRUE) # plotting
+library(ggpubr, warn.conflicts = FALSE, quietly = TRUE) # added plotting function
+library(ggtext, warn.conflicts = FALSE, quietly = TRUE) # more plotting
+library(DataExplorer, warn.conflicts = FALSE, quietly = TRUE) # quick exploratory vis
+library(corrplot, warn.conflicts = FALSE, quietly = TRUE) # plotting corrmatrix
+library(alookr, warn.conflicts = F, quietly = T) # for removing correlated variables
+library(proxy, warn.conflicts = FALSE, quietly = TRUE) # for computing dissimilarity
+library(factoextra, warn.conflicts = FALSE, quietly = TRUE) # visualizing clustering
+library(ggdendro, warn.conflicts = FALSE, quietly = TRUE) # for some clever dendrograms
 
+file <- 'leukemia_dat.csv' # store the path to the source data
+rawData <- read.csv(file, header = TRUE, stringsAsFactors = TRUE) # import source data, in this case the data file has no headers and strings will be used a factors 
+rawData <- within(rawData, rm("X", "patient_id")) # remove variable ID as it is simply a record identification
+
+```
+The first step in this investigation was to select a clustering technique. While there are many computational methods to compare and asses algorithms an emperical approach that factors in the properties of the data and the purpose of the task was the preferred method by this investigation. Firstly it was assumed that the data set had been cleaned and was free from errors (which has been confirmed in latter steps) and any extreme values were genuine cases that needed to be accounted for. The second factor that was considered was the investigations requirement to produce an outcome that is understandable and can be used to further drill down into the data. That is,  the purpose of the exercise is to gain an insight into the relationships between the gene groupings rather than simply dropping observations into the correct bucket. These to requirements alleviated the need and ruled out the use of density based clustering methods. Density based methods, while computationally expensive, can be very accurate, especially if one is dealing with data sets that contain outliers that do not need to fall within a cluster. However the outputs of density based methods, especially in higher dimensional space (>3) can be difficult to visualize and interpret. Given there is no strong need for the use of density based clustering in this application it is considered prudent to use a less complicated algorithm. Generally it is considered advantageous to use the simplest algorithm suitable for the data as the simpler the algorithm the more understandable the result is.
+
+This leaves Centroid and Hierarchical based clustering methods to select from. Hierarchical methods have the advantage that they build an easily interpreted tree, which could further inform hypothesis and do not make any assumptions regarding the shape of the clusters or the number of clusters. While the number of clusters was known in this case the assumption that that it is the most prominent pattern in the data can not be easily confirmed. Further in such high dimensional space (~1800 variables) gaining any understanding of the cluster shape is near impossible (without significant dimension reduction which is beyond the scope of this investigation), this lead to the inability to check the assumption of approximately symmetric clusters. For this reason the use of Centroid based methods, such as k-means was considered a poor choice. As discussed below, in high dimensional space, traditional methods used to measure distance can become erroneous and lack meaning. While some evidence of successful adaption of centroid based clustering using variuos distance metrics can be found it is generally poorly documented. Given the scope of this investigation the flexibility of which distance / similarity metric is used suggests Hierarchial clustering would be the most suitable method. Further agglomerate clustering will be used as it is generally more accepted and has much more supporting literature. 
+
+With the selection of Hierarchical based  agglomerate clustering confirmed the following issues had to be dealt with in a careful manner:
+
+* High sensitivity to outliers, especially since choice made early in thew clustering process carry throughout,
+* Highly correlated variables can adversely affect the clustering,
+* A meaningful distance measure needs to be used,
+* Selection of meaningful cluster assessments to define the best levels to cut the resulting tree (beyond the known 2 clusters).
+
+At this point in the investigation it is worth noting that this investigation, while it is aware of the actual classes of the data, will develop a model independant of this knowledge and then use it to asses the outcomes. As such there was is no need to complete test training splits as the true classes are retained from the model for the entire process upto final evaluation. The following steps have been undertaken to complete the clustering.
+
+```{r q3 initial vis}
+## initial exploratory vis, stored as variables to display in appendix 1
+a2_1_intro <- introduce(rawData) # provides introductory summary, good to confirm variable types, missing data ect
+
+```
+The data was first loaded into R and the labeling columns X and patient_id removed as there is no need to retain observation identifiers. Some elementary exploration was then undertaken, the outputs can be seen in Appendix 2 figures 1. It can be seen that there are no missing values, all observations are labeled and contain 1867 numeric variables for each entry. At this point the investigation made a domain specific assumption that all variables were measured in the same units and any difference in magnitude was an attribute that should be retained. Further in later steps various methods of calculating similarity will be assessed, some of which normalize the length of the vectors. Given these factors scaling and centering the data was not considered an appropriate action during data preparation. The next step was to remove any highly correlated variables. A threshold of 0.9 was used and the following variables were removed.
+
+```{r q3 remove correlated variables }
+rawData_corr <- treatment_corr(rawData, corr_thres = 0.9)
+
+```
+
+```{r q3 display removed variables, include = TRUE}
+## Display variables that were removed and house keeping
+(names(rawData)[! names(rawData) %in% names(rawData_corr)]) # print columns that where dropped in above steps
+print("total # removed")
+length((names(rawData)[! names(rawData) %in% names(rawData_corr)]))
+actualClasses <- rawData_corr$type # save the actual classes for reference later
+rawData_corr <- within(rawData_corr, rm("type")) # remove class variable so as it is not included in model training
+modelData_df <- rawData_corr # move data into model data frame
+modelData_matrix <- as.matrix(modelData_df) # create matrix of model data
+
+```
+
+```{r q3 similarity matrix}
+## calculate dissimilarity matrix using various methods.
+dissimilarityArray_all <- array(dim = c(72, 72, 3))
+dissimilarityArray_all[ , ,1] <- as.matrix(dist(modelData_matrix, method = "cosine")) # dissimilarity based on cosine distance and save as the first matrix in array
+dissimilarityArray_all[ , ,2] <- as.matrix(dist(modelData_matrix, method = "euclidean")) # dissimilarity based on euclidean distance and save as second matrix in array
+dissimilarityArray_all[ , ,3] <- as.matrix(dist(modelData_matrix, method = "manhattan")) # dissimilarity based on manhattan distance and save as third matrix in array
+
+```
+
+```{r cluster data}
+## generate cluster assignment for all 3 dissimilarity matrix using single, complete, average and ward methods
+names_dis <- c("cosine", "eucledian", "manhattan") # vector of matrix identifiers
+methods <- c("single", "complete", "average", "ward") # vector of method types
+count <- 0 # set counter
+ac_value <- c() # empty vector to store Ac value for quick access later
+ac_label <- c() # empty vector to stor AC labels
+ac_sim <- c() # empty vector to store the matrix type for each ac score
+
+for (i in 1:3) { # loop over array full of dissimilarity matrix 
+  for (m in 1:4){ # loop over methods
+    count <- count + 1 # increase counter by 1
+    
+    variable_id <- paste("cluster",names_dis[i], methods[m], sep = "_") # generate variable id
+    model <- agnes(dissimilarityArray_all[ , ,i], diss = TRUE, method = methods[m]) # generate model
+    assign(variable_id, model) # assign model to variable id
+    ac_value[count] <- model$ac # record ac value
+    ac_label[count] <- paste(names_dis[i], methods[m], sep = " ") # record label to label ac value
+    ac_sim[count] <- methods[m] # record similarity matrix used
+    
+  }
+}
+
+acValue_all <- as.data.frame(cbind(ac_label, ac_value, ac_sim)) # make ac vectors into a data frame for plotting later
+
+```
+
+```{r ac values, include = TRUE, fig.cap= "Summary of model perfromance using agglomerative coefficient", fig.width=6, fig.height=4, fig.align='center'}
+## use ggplot to make a column graph showing the model performance
+agCoef_graph <- ggplot(acValue_all, aes(ac_label, ac_value, fill = ac_sim)) + geom_col(width = ac_value) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1), legend.position = "none") + 
+  labs(x = "Model", y = "AC Value", title = "Aglomerative coefficent for all models")
+
+agCoef_graph # display graph
+
+```
+Three dissimilarity matrices were generated to represent the data using the Cosine, Euclidean and Manhattan distances. The selection of an appropriate distance / dissimilarity measure is crucial to the accuracy of any clustering algorithm. While visualizing distances in such high dimensional spaces the following sumarises the effects of each method.
+
+* Cosine simply measures the difference as an angle between the two vectors that would describe each observation. This has the effect of scaling, but not centering the data meaning that the magnitudes of the observations are less important, just the directions in which they lie,
+* Euclidean measures the distance between the end of the vectors, which encompasses both the lengths and directions of the vectors,
+* Manhattan projects the vectors onto a single 2 dimensional plane and measures the distance along both axes between the ends of the vectors describing each observation.
+
+The agnes() function from the cluster package was then used to generate the cluster assignments for each dissimilarity matrix using the single, complete, average and ward methods. To rank the method the agglomerate coefficient was used. The rankings of the models is shown in the below figure. It is clear that the cosine wards model has the highest degree of structure. This model will now be assessed against the known class labels. As we know we are seeking only 2 clusters we will cut the tree an k = 2 to obtain the classifications.
+
+```{r get confusion matrix, include = TRUE}
+# Cut tree at k = 2 to find the 2 classifications found by the model
+modelResults <- cutree(cluster_cosine_ward, k = 2) # cut tree at k  =2
+modelResults <- as.factor(ifelse(modelResults == 1, "ALL", "AML")) # if cluster is 1 then assign ALL otherwise AML, change to factor for confusion matrix
+confMatrix <- confusionMatrix(modelResults, actualClasses)
+confMatrix
+
+```
+
+```{r swc and gap, include = TRUE, fig.cap= "Assesment of cluster quality vs  clusters using Silhoutte width criteria and Gap Statistic", fig.width=6, fig.height=4, fig.align='center'}
+# Cut tree at k = i to find the swc for each option
+swc <- data.frame() # create empty data frame hold swc values
+
+for(i in 2:71){ # loop through all posible number of clusters
+  sil <- silhouette(cutree(cluster_cosine_ward, k = i), dissimilarityArray_all[ , , 1]) # calculate SWC
+  sil <- summary(sil) # extra summary so avg can be easily accessed
+  swc[i-1,1] <- i # record number of clusters
+  swc[i-1,2] <- sil$avg.width # record avg
+}
+
+## calculate gap stats
+GAPFUN <- function(dissMatrix, k){ # define a function that takes a disimilarity matrix and number of clusters
+  
+  list(cluster = cutree(agnes(dissMatrix, diss = TRUE, method = "ward"), k = k)) # create a list of the cluster for each observation
+}
+gapStats <- clusGap(dissimilarityArray_all[ , ,1],GAPFUN, B = 50, K.max = 71 ) # calculate gap stats
+
+evalPlot_df <- cbind(swc[1:25, ], gapStats$Tab[2:26,3])
+names(evalPlot_df) <- c("# Clusters", "AVG Silhoutte Width", "Gap Statistic") # give Df columns names
+
+## plot both with ggplot
+eval_plot <- ggplot(evalPlot_df ) + 
+  geom_point(aes(`# Clusters`, `AVG Silhoutte Width`), colour = "blue", size = 2, alpha = 0.75) + geom_line(aes(`# Clusters`, `AVG Silhoutte Width`), colour = "grey") +
+  geom_point(aes(`# Clusters`, `Gap Statistic`), colour = "orange", size = 2, alpha = 0.75) + geom_line(aes(`# Clusters`, `Gap Statistic`), colour = "grey")+ 
+  geom_vline(aes(xintercept=3), colour = "red")+ geom_text(aes( 3, 0, label = 3, hjust = -1), size = 3, colour = "red") + # vertical red line at point of interest
+  geom_text(aes( 22, 0.9, label = "GAP", hjust = -1), size = 6, colour = "orange") +
+  geom_text(aes( 22, 0.3, label = "SWC", hjust = -1), size = 6, colour = "blue") +
+  scale_y_continuous("AVG Silhoutte Width", sec.axis = sec_axis(~ . * 1, name = "Gap Statistic")) +
+  labs(title = " Silhoutte Width Criterion and Gap Statistic Vs # Cluster") +
+  theme_minimal()
+eval_plot # display plot
+
+```
+It can be seen that the model is very accurate in predicting the classes with an overall accuracy of 97% and only 2 missclassified observations. Now that the accuracy of the model has been confirmed we can use it to further explore the data. As well as visualizing the model to help interpret it and its data we will explore if the current classifications are statistically the "best". Interestingly 2 clusters is not the mathematically best fitting classification, with 3 clusters showing closer clusters. While there are many criteria for selecting the optimal Gap statistic, it is interesting to note the change in slope of the gap statistic at the same number of clusters. To further explor the clustering results we will plot the heirarchy as a dendogram.
+
+```{r, include = TRUE, fig.cap= "Dendrogram showing assigned and actual clusters and the Heirarchy", fig.width=6, fig.height=4, fig.align='center'}
+dendro <- as.dendrogram(cluster_cosine_ward)
+actualClasses_df <- data.frame(c(1:72),actualClasses)
+names(actualClasses_df) <- c("label", "Actual Class")
+actualClasses_df$label <- as.character(actualClasses_df$label)
+dendroDat <- dendro_data(dendro)
+dendroSeg <- dendroDat$segments
+dendroEnds <- dendroSeg %>% filter(yend == 0) %>% left_join(dendroDat$labels, by = "x") %>% left_join(actualClasses_df, by = "label")
+classColour <- c("ALL" = "blue", "AML" = "red")
+                 
+dendro1 <- ggplot() + geom_segment(data = dendroSeg, aes(x=x, y=y, xend=xend, yend=yend), size = 01, alpha = 0.75, colour = "dark grey") + 
+  geom_segment(data = dendroEnds, aes(x=x, y=y.x, xend=xend, yend=yend, color = `Actual Class`), size = .8, alpha = 0.75) + 
+  geom_richtext(data = dendroEnds, aes(x = x, y = 0, label = label), size = 3, angle = 90) +
+  scale_color_manual(values = classColour) + 
+  ylab("Distance") + 
+  xlab("Patient ID") +
+  ggtitle("Leukemia Classification Dendrogram") + 
+  geom_rect(aes(xmin = 0, xmax = 49.5, ymin = 0, ymax = 2.5), fill = "blue", alpha = 0.1) + 
+  geom_rect(aes(xmin = 49.55, xmax = 73, ymin = 0, ymax = 1.5), fill = "red", alpha = 0.1) +
+  geom_text(aes(x = 5, y = 2.25, label = "Classified as ALL"), size = 4, colour = "blue") +
+  geom_text(aes(x = 67, y = 1.25, label = "Classified as AML"), size = 4, colour = "red") +
+  theme_minimal()+
+  theme(axis.text.x = element_blank())
+  
+dendro1
+
+```
+
+***
+
+\newpage
 
 ***
 ## Appendix 1
@@ -260,9 +455,24 @@ a1_9_cor5
 
 ```
 
-### Figure 10•
+### Figure 10
 ```{r Apendix 1_10, include = TRUE}
 a1_10_cor8
+
+```
+
+***
+
+\newpage
+
+***
+## Appendix 2
+
+### Figure 1
+
+```{r A2 fig 1, include = TRUE}
+## initial exploratory vis, stored as variables to display in appendix 1
+a2_1_intro
 
 ```
 
